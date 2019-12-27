@@ -63,7 +63,7 @@ class SiameseNetwork(object):
             [5, 5, 32, 32],
             [5, 5, 32, 64],
             [5, 5, 64, 64],
-            [64 * input_dim[0] * input_dim[1] / 16, embed_dim]
+            [64 * round(input_dim[0] / 4) * round(input_dim[1] / 4), embed_dim]
         ]
 
         r = range(len(shapes))
