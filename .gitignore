@@ -1,4 +1,5 @@
 venv/
 .ipynb_checkpoints/
+__pycache__/
 data/yale-faces/
 Playground.ipynb
