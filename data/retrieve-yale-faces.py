@@ -1,7 +1,8 @@
 """Download the Yale Faces dataset."""
 
-import requests
 import os
+import requests
+import tarfile
 
 
 url = "https://vismod.media.mit.edu/vismod/classes/mas622-00/datasets/YALE/yalefaces.tar.gz"
@@ -14,3 +15,6 @@ if not os.path.exists(download_dir):
 with open(filename, "wb") as f:
     r = requests.get(url)
     f.write(r.content)
+
+tar = tarfile.open(filename, "r:gz")
+tar.extractall(download_dir)
