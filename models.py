@@ -14,7 +14,7 @@ def conv2d(inputs, filters, strides=1, padding="SAME", alpha=0.2):
     return tf.nn.leaky_relu(x, alpha=alpha)
 
 
-def max_pool2d(inputs, ksize, strides=1, padding="SAME"):
+def max_pool2d(inputs, ksize, strides=2, padding="SAME"):
     """Max pooling layer."""
     x = tf.nn.max_pool2d(inputs, ksize, strides, padding)
     return x
@@ -38,7 +38,7 @@ class SiameseNetwork(object):
 
     def __init__(self,
                  input_dim=(243, 320),
-                 embed_dim=128,
+                 embed_dim=64,
                  optimizer=tf.optimizers.Adam,
                  learning_rate=0.001,
                  checkpoint_dir=None):
@@ -59,11 +59,11 @@ class SiameseNetwork(object):
     def initialize_weights(self, input_dim, embed_dim):
         """Initialize weights."""
         shapes = [
-            [5, 5, 1, 64],
+            [5, 5, 1, 32],
+            [5, 5, 32, 32],
+            [5, 5, 32, 64],
             [5, 5, 64, 64],
-            [5, 5, 64, 128],
-            [5, 5, 128, 128],
-            [input_dim[0] * input_dim[1], embed_dim]
+            [64 * input_dim[0] * input_dim[1] / 16, embed_dim]
         ]
 
         r = range(len(shapes))
@@ -90,29 +90,27 @@ class SiameseNetwork(object):
         embed1 = self.embed(x1)
         embed2 = self.embed(x2)
 
-        dot_product = tf.matmul(embed1, embed2)
+        dot_product = tf.matmul(embed1, tf.transpose(embed2))
         norms = tf.norm(embed1) * tf.norm(embed2)
         cosine_similarity = dot_product / norms
         return cosine_similarity
 
     def loss(self, labels, preds):
         """Cross entropy loss."""
-        return tf.losses.softmax_cross_entropy_with_logits(labels, preds)
+        return tf.losses.categorical_crossentropy(labels, preds)
 
     def train_step(self, x1, x2, labels):
         """One train step on a batch of inputs and target outputs."""
         with tf.GradientTape() as tape:
-            preds = tf.similarity_score(x1, x2)
+            preds = self.similarity_score(x1, x2)
             current_loss = self.loss(labels, preds)
 
         grads = tape.gradient(current_loss, self.weights)
         self.optimizer.apply_gradients(zip(grads, self.weights))
 
-        metrics = {
-            "loss": tf.reduce_mean(current_loss).numpy()
-        }
+        loss = tf.reduce_mean(current_loss).numpy()
 
-        return metrics
+        return loss
 
     def save(self, name=""):
         """Save checkpoint."""
