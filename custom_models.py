@@ -1,11 +1,12 @@
 """Model constructors for use in notebooks."""
+import numpy as np
 import tensorflow as tf
 
 
-def dense(inputs, weights, alpha=0.2):
+def dense(inputs, weights, activation=tf.identity, *activation_args):
     """Fully-connected layer."""
     x = tf.matmul(inputs, weights)
-    return tf.nn.leaky_relu(x, alpha=alpha)
+    return activation(x, *activation_args)
 
 
 def conv2d(inputs, filters, strides=1, padding="SAME", alpha=0.2):
@@ -40,21 +41,12 @@ class SiameseNetwork(object):
                  input_dim=(243, 320),
                  embed_dim=64,
                  optimizer=tf.optimizers.Adam,
-                 learning_rate=0.001,
-                 checkpoint_dir=None):
+                 learning_rate=0.00001):
         """Set hyperparameters, initialize weights."""
         self.optimizer = optimizer(learning_rate)
 
+        np.random.seed(41)
         self.initialize_weights(input_dim, embed_dim)
-
-        if checkpoint_dir is not None:
-            assert checkpoint_dir[-1] == "/"
-            self.checkpoint_dir = checkpoint_dir
-            weights = {"w" + str(i): w for (i, w) in enumerate(self.weights)}
-            self.checkpoint = tf.train.Checkpoint(
-                optimizer=self.optimizer,
-                **weights
-            )
 
     def initialize_weights(self, input_dim, embed_dim):
         """Initialize weights."""
@@ -90,14 +82,13 @@ class SiameseNetwork(object):
         embed1 = self.embed(x1)
         embed2 = self.embed(x2)
 
-        dot_product = tf.matmul(embed1, tf.transpose(embed2))
-        norms = tf.norm(embed1) * tf.norm(embed2)
-        cosine_similarity = dot_product / norms
-        return cosine_similarity
+        distance = tf.norm(embed2 - embed1, axis=-1)
+
+        return tf.nn.sigmoid(distance)
 
     def loss(self, labels, preds):
         """Cross entropy loss."""
-        return tf.losses.categorical_crossentropy(labels, preds)
+        return tf.losses.binary_crossentropy(labels, preds)
 
     def train_step(self, x1, x2, labels):
         """One train step on a batch of inputs and target outputs."""
@@ -107,19 +98,6 @@ class SiameseNetwork(object):
 
         grads = tape.gradient(current_loss, self.weights)
         self.optimizer.apply_gradients(zip(grads, self.weights))
+        loss = tf.reduce_mean(current_loss)
 
-        loss = tf.reduce_mean(current_loss).numpy()
-
-        return loss
-
-    def save(self, name=""):
-        """Save checkpoint."""
-        path = self.checkpoint_dir + name
-        self.checkpoint.save(path)
-        print("Checkpoint saved to", path)
-
-    def load(self, name):
-        """Load checkpoint."""
-        path = self.checkpoint_dir + name
-        self.checkpoint.restore(path)
-        print("Checkpoint loaded from", path)
+        return grads, loss
