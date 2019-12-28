@@ -50,12 +50,16 @@ class SiameseNetwork(object):
 
     def initialize_weights(self, input_dim, embed_dim):
         """Initialize weights."""
+        x = input_dim[0]
+        y = input_dim[1]
+
         shapes = [
             [5, 5, 1, 32],
             [5, 5, 32, 32],
             [5, 5, 32, 64],
             [5, 5, 64, 64],
-            [64 * round(input_dim[0] / 4) * round(input_dim[1] / 4), embed_dim]
+            [64 * round(x / 4) * round(y / 4), embed_dim],
+            [embed_dim, 1]
         ]
 
         r = range(len(shapes))
@@ -82,9 +86,11 @@ class SiameseNetwork(object):
         embed1 = self.embed(x1)
         embed2 = self.embed(x2)
 
-        distance = tf.norm(embed2 - embed1, axis=-1)
+        distance = tf.abs(embed2 - embed1)
 
-        return tf.nn.sigmoid(distance)
+        score = dense(distance, self.weights[5], activation=tf.nn.sigmoid)
+
+        return score
 
     def loss(self, labels, preds):
         """Cross entropy loss."""
