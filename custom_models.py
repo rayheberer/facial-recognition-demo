@@ -3,9 +3,9 @@ import numpy as np
 import tensorflow as tf
 
 
-def dense(inputs, weights, activation=tf.identity, *activation_args):
+def dense(inputs, weights, bias, activation=tf.identity, *activation_args):
     """Fully-connected layer."""
-    x = tf.matmul(inputs, weights)
+    x = tf.matmul(inputs, weights) + bias
     return activation(x, *activation_args)
 
 
@@ -39,14 +39,24 @@ class SiameseNetwork(object):
 
     def __init__(self,
                  input_dim=(243, 320),
-                 embed_dim=64,
+                 embed_dim=128,
                  optimizer=tf.optimizers.Adam,
-                 learning_rate=0.00001):
+                 learning_rate=0.00005,
+                 checkpoint_dir=None):
         """Set hyperparameters, initialize weights."""
         self.optimizer = optimizer(learning_rate)
 
         np.random.seed(41)
         self.initialize_weights(input_dim, embed_dim)
+
+        if checkpoint_dir is not None:
+            assert checkpoint_dir[-1] == "/"
+            self.checkpoint_dir = checkpoint_dir
+            weights = {"w" + str(i): w for (i, w) in enumerate(self.weights)}
+            self.checkpoint = tf.train.Checkpoint(
+                optimizer=self.optimizer,
+                **weights
+            )
 
     def initialize_weights(self, input_dim, embed_dim):
         """Initialize weights."""
@@ -59,7 +69,9 @@ class SiameseNetwork(object):
             [5, 5, 32, 64],
             [5, 5, 64, 64],
             [64 * round(x / 4) * round(y / 4), embed_dim],
-            [embed_dim, 1]
+            [1, embed_dim],
+            [embed_dim, 1],
+            [1, 1]
         ]
 
         r = range(len(shapes))
@@ -78,17 +90,17 @@ class SiameseNetwork(object):
         p2 = max_pool2d(c2_2, 2)
 
         flatten = tf.reshape(p2, shape=(tf.shape(p2)[0], -1))
-        embed = dense(flatten, self.weights[4])
+        embed = dense(flatten, self.weights[4], self.weights[5], tf.nn.sigmoid)
         return embed
 
-    def similarity_score(self, x1, x2):
+    def similarity_score(self, x1, x2, embed=True):
         """Compute similarity score between -1 and 1."""
-        embed1 = self.embed(x1)
-        embed2 = self.embed(x2)
+        embed1 = self.embed(x1) if embed else x1
+        embed2 = self.embed(x2) if embed else x2
 
-        distance = tf.abs(embed2 - embed1)
+        dist = tf.abs(embed2 - embed1)  # L2 norm causes instability near 0
 
-        score = dense(distance, self.weights[5], activation=tf.nn.sigmoid)
+        score = dense(dist, self.weights[6], self.weights[7], tf.nn.sigmoid)
 
         return score
 
@@ -107,3 +119,15 @@ class SiameseNetwork(object):
         loss = tf.reduce_mean(current_loss)
 
         return grads, loss
+
+    def save(self, name=""):
+        """Save checkpoint."""
+        path = self.checkpoint_dir + name
+        self.checkpoint.save(path)
+        print("Checkpoint saved to", path)
+
+    def load(self, name):
+        """Load checkpoint."""
+        path = self.checkpoint_dir + name
+        self.checkpoint.restore(path)
+        print("Checkpoint loaded from", path)
